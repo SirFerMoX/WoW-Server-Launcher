@@ -1,0 +1,14 @@
+# Server directories — paths can be relative to the repack root or absolute.
+# Relative example:  MySQL=Database\MySQL_Server.bat
+# Absolute example:  MySQL=C:\MyServer\Database\MySQL_Server.bat
+
+MySQL=Database\MySQL_Server.bat
+Auth=Servers\authserver.exe
+World=Servers\worldserver.exe
+Website=Website\Apache\Apache_Server.bat
+HeidiSQL=Tools\HeidiSQL\heidisql.exe
+Notepad=Tools\Notepad\notepad++.exe
+ConfigFolder=Servers\configs
+LogsFolder=Logs
+AuthConf=Servers\configs\authserver.conf
+WorldConf=Servers\configs\worldserver.conf

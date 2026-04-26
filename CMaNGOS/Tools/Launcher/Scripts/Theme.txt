@@ -1,0 +1,9 @@
+﻿# Active theme for the Launcher. Edit here or use the Theme selector
+# in the Maintenance section. Restart the Launcher to apply changes.
+#
+# Available themes:
+#   Exp1 - Classic (WoW Classic)
+#   Exp2 - The Burning Crusade
+#   Exp3 - Wrath of the Lich King
+
+ActiveTheme = Exp1

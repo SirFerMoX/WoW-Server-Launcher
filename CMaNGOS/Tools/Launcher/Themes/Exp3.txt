@@ -1,0 +1,104 @@
+# ═══════════════════════════════════════════════════════════════
+#  Exp3.txt — Launcher Color Theme: Wrath of the Lich King
+# ═══════════════════════════════════════════════════════════════
+#
+#  Customize the interface colors of the Launcher.
+#  Changes take effect the next time the Launcher is started.
+#
+#  Color format:
+#    6 digits  →  #RRGGBB        (solid color)
+#    8 digits  →  #AARRGGBB      (with transparency: 00=invisible, FF=opaque)
+#
+#  You can use any text editor to modify this file.
+#  Lines starting with # are comments and are ignored.
+# ═══════════════════════════════════════════════════════════════
+
+
+# ── BACKGROUNDS ─────────────────────────────────────────────────
+
+# Main window and content area background
+BgWindow = #313338
+
+# Left navigation sidebar background
+BgSidebar = #1E1F22
+
+# Cards, panels, console tab headers and section backgrounds
+BgCard = #2B2D31
+
+# Navigation button hover background
+BgHover = #35373C
+
+# Selected list items and text box background
+BgSelected = #404249
+
+# Embedded console windows background (Auth / World)
+BgConsole = #111214
+
+
+# ── BORDERS ─────────────────────────────────────────────────────
+
+# Borders, dividers, secondary button background
+# and very dim text (sidebar subtitle)
+BorderAccent = #4E5058
+
+
+# ── TEXT ────────────────────────────────────────────────────────
+
+# Primary text: titles, labels, configuration values
+TextPrimary = #F2F3F5
+
+# Secondary text: navigation labels, table column headers
+TextSecondary = #B5BAC1
+
+# Muted text: subtitles, descriptions, process names
+TextMuted = #949BA4
+
+
+# ── ACCENT COLORS ────────────────────────────────────────────────
+
+# Blue buttons: Start/Launch/Save/Apply button background
+AccentGreen = #2B78C2
+
+# Blue buttons hover and OK/Confirm dialog button background
+AccentGreenAlt = #1E5B96
+
+# Blue text accent: app name, selected nav item, realm message, text cursor
+AccentBlue = #58B4F0
+
+
+# ── STATUS ──────────────────────────────────────────────────────
+
+# Stopped status: status dots, labels and stop/delete buttons
+StatusStopped = #F23F43
+
+
+# ── OVERLAY (action in progress) ─────────────────────────────────
+
+# Outer dim layer of the overlay during server actions (AA = opacity in hex)
+# Examples: 00=invisible  66=light  99=semi-opaque  CC=dark  FF=fully opaque
+OverlayDim = #99000000
+
+# Central card background of the overlay (AA = opacity in hex)
+OverlayBg = #CC313338
+
+
+# ── CONSOLE ──────────────────────────────────────────────────────
+
+# Embedded console text color (CMD format: two hex digits XY)
+# X = background color  |  Y = foreground (text) color
+#
+# Color codes:
+#   0=Black     1=DarkBlue     2=DarkGreen   3=DarkCyan
+#   4=DarkRed   5=DarkMagenta  6=DarkYellow  7=Gray
+#   8=DarkGray  9=Blue         A=LightGreen  B=LightCyan
+#   C=LightRed  D=Magenta      E=Yellow      F=White
+#
+# Examples:  0B = Black background + Light Cyan text
+#            07 = Black background + Gray text (default CMD)
+ConsoleColor = 03
+
+
+# ── APPLICATION ICON ─────────────────────────────────────────────
+
+# Icon file used for the launcher window and taskbar (must be in Tools\Launcher\Icons\)
+AppIcon = Launcher_Exp3.ico

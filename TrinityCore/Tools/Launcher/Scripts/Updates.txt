@@ -1,0 +1,4 @@
+# URL opened by the "Check for Updates" button in the Maintenance section.
+# Replace with your own releases page if you host the launcher elsewhere.
+
+UpdatesURL = https://github.com/SirFerMoX/WoW-Server-Launcher/releases

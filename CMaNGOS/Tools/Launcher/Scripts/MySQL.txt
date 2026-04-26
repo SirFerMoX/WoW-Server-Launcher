@@ -1,0 +1,8 @@
+# MySQL connection settings
+# These values are displayed in Settings and used by the HeidiSQL shortcut.
+
+Host=127.0.0.1
+Port=3306
+User=root
+Password=123456
+Description=CMaNGOS
