@@ -466,7 +466,7 @@ function Set-RealmAddress([string]$addr) {
                 "LoginREST.ExternalAddress = $addr"
             } else { $_ }
         }
-        $lines | Set-Content $bnetConf -Encoding UTF8
+        [System.IO.File]::WriteAllLines($bnetConf, $lines, [System.Text.UTF8Encoding]::new($false))
     }
 }
 
