@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .NOTES
-    SPP-LegionV2 Launcher - WPF GUI
+    CMaNGOS Launcher - WPF GUI
     Located at Tools\Launcher\Scripts\ within the repack root.
     Use Launcher.bat in the root folder to start it.
 #>
@@ -242,7 +242,7 @@ function Read-Directories {
 $Script:srvDirs = Read-Directories
 
 function Read-MySQLConfig {
-    $cfg = @{ Host = "127.0.0.1"; Port = "3310"; User = "spp_user"; Password = "123456"; Description = "SPP-LegionV2" }
+    $cfg = @{ Host = "127.0.0.1"; Port = "3310"; User = "spp_user"; Password = "123456"; Description = "CMaNGOS" }
     $f = "$scriptsDir\MySQL.txt"
     if (Test-Path $f) {
         Get-Content $f | ForEach-Object {
@@ -543,7 +543,7 @@ function Invoke-ImportSave([int]$slot) {
 <Window
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="SPP-LegionV2 Launcher"
+    Title="CMaNGOS Launcher"
     Height="680" Width="940"
     MinHeight="580" MinWidth="820"
     WindowStartupLocation="CenterScreen"
