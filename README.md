@@ -78,6 +78,8 @@ The launcher expects this layout inside your server root folder:
     │   └── heidisql.exe            ← Database management tool (optional)
     ├── Notepad/
     │   └── notepad++.exe           ← Text editor for config files (optional)
+    ├── Redist/
+    │   └── Install_VC_AiO.bat      ← Installs all Visual C++ Redistributable packages
     └── Launcher/
         ├── Icons/                  ← .ico files for the launcher window
         ├── Connections/
@@ -257,7 +259,12 @@ Manage player accounts without touching the database directly.
 
 **MySQL Connection** — shows the connection parameters from `MySQL.txt` (read-only display).
 
-**Realm Name** — edit and apply the realm name that appears in the in-game server list and on the Dashboard. Changes are written directly to the `realmlist` table in the database.
+**Realm Settings** — edit and apply two values that control how players connect to your server:
+
+- **Realm Name** — the name shown in the in-game server list and on the Dashboard. Written to the `name` column of the `realmlist` table.
+- **External Address** — the public IP address (or hostname) players use to connect. Written to the `address` column of the `realmlist` table. On TrinityCore and SPP-LegionV2, also updates the `LoginREST.ExternalAddress` line in `bnetserver.conf` automatically.
+
+Both fields sit side by side — edit one or both and click **Apply** on each independently.
 
 **Configuration Files** — quick buttons to open the Auth config, World config, and the config folder directly in Notepad++.
 
@@ -405,6 +412,8 @@ The paths in `Directories.txt` for `HeidiSQL` and `Notepad` do not exist. Update
 | Per-theme icon | — | — | ✔ |
 | SRP6 format | Standard | Standard | Big-endian hex |
 | `account_access` table | ✔ | ✔ | — (gmlevel on account) |
+| External Address — DB update | ✔ | ✔ | ✔ |
+| External Address — conf file | — | `bnetserver.conf` | — |
 
 ---
 

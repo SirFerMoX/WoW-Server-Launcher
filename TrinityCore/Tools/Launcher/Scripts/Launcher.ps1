@@ -466,6 +466,36 @@ function Set-RealmName([string]$newName) {
     }
 }
 
+function Get-RealmAddress {
+    if (-not (Test-Proc "mysqld")) { return "" }
+    $mysqlExe = "$mainfolder\Database\bin\mysql.exe"
+    $conf     = "$connectDir\connection_auth.cnf"
+    try {
+        $r = & "$mysqlExe" "--defaults-extra-file=$conf" --silent --skip-column-names -e "SELECT address FROM realmlist WHERE id=1;" 2>$null
+        return $r.Trim()
+    } catch { return "" }
+}
+
+function Set-RealmAddress([string]$addr) {
+    # 1. Update realmlist in database
+    $mysqlExe = "$mainfolder\Database\bin\mysql.exe"
+    $conf     = "$connectDir\connection_auth.cnf"
+    if ((Test-Path $mysqlExe) -and (Test-Path $conf)) {
+        & "$mysqlExe" "--defaults-extra-file=$conf" --silent -e "UPDATE realmlist SET address='$addr' WHERE id=1;" 2>$null
+    }
+    # 2. Update LoginREST.ExternalAddress in bnetserver.conf
+    $bnetConf = $Script:srvDirs.BnetConf
+    if (Test-Path $bnetConf) {
+        $lines = Get-Content $bnetConf
+        $lines = $lines | ForEach-Object {
+            if ($_ -match '^\s*LoginREST\.ExternalAddress\s*=') {
+                "LoginREST.ExternalAddress = $addr"
+            } else { $_ }
+        }
+        $lines | Set-Content $bnetConf -Encoding UTF8
+    }
+}
+
 function Get-SaveSlots {
     1..9 | ForEach-Object {
         $d  = "$mainfolder\Saves\$_"
@@ -937,16 +967,40 @@ function Invoke-ImportSave([int]$slot) {
 
           <Border Style="{StaticResource Card}">
             <StackPanel>
-              <TextBlock Text="Realm Name" Foreground="#EDFFF2" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12"/>
+              <TextBlock Text="Realm Settings" Foreground="#EDFFF2" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12"/>
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="20"/>
+                  <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBox  Name="RealmInput"    Grid.Column="0" Style="{StaticResource TBox}" Margin="0,0,8,0"/>
-                <Button   Name="BtnApplyRealm" Content="Apply" Grid.Column="1" Style="{StaticResource BtnGreen}" MinWidth="80"/>
+                <!-- Realm Name -->
+                <StackPanel Grid.Column="0">
+                  <TextBlock Text="Realm Name" Foreground="#4A7A5A" FontSize="11" Margin="0,0,0,4"/>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox  Name="RealmInput"    Grid.Column="0" Style="{StaticResource TBox}" Margin="0,0,8,0"/>
+                    <Button   Name="BtnApplyRealm" Content="Apply" Grid.Column="1" Style="{StaticResource BtnGreen}" MinWidth="72"/>
+                  </Grid>
+                  <TextBlock Name="RealmMsg" Text="" Foreground="#01E676" FontSize="11" Margin="0,6,0,0"/>
+                </StackPanel>
+                <!-- External Address -->
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="External Address" Foreground="#4A7A5A" FontSize="11" Margin="0,0,0,4"/>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox  Name="AddressInput"    Grid.Column="0" Style="{StaticResource TBox}" Margin="0,0,8,0"/>
+                    <Button   Name="BtnApplyAddress" Content="Apply" Grid.Column="1" Style="{StaticResource BtnGreen}" MinWidth="72"/>
+                  </Grid>
+                  <TextBlock Name="AddressMsg" Text="" Foreground="#01E676" FontSize="11" Margin="0,6,0,0"/>
+                </StackPanel>
               </Grid>
-              <TextBlock Name="RealmMsg" Text="" Foreground="#01E676" FontSize="11" Margin="0,8,0,0"/>
             </StackPanel>
           </Border>
 
@@ -1411,7 +1465,7 @@ function Switch-Page([int]$idx) {
     if ($idx -eq 0) { Sync-Consoles; $n = Get-RealmName; if ($n) { $DashSubtitle.Text = $n } }
     if ($idx -eq 2) { Refresh-Saves }
     if ($idx -eq 3) { Refresh-Accounts }
-    if ($idx -eq 4) { $n = Get-RealmName; $RealmInput.Text = $n; $DashSubtitle.Text = $n }
+    if ($idx -eq 4) { $n = Get-RealmName; $RealmInput.Text = $n; $DashSubtitle.Text = $n; $AddressInput.Text = Get-RealmAddress }
 }
 
 $NavMain.Add_Click(          { Switch-Page 0 })
@@ -1980,6 +2034,14 @@ $BtnApplyRealm.Add_Click({
     $DashSubtitle.Text = $name
 })
 
+$BtnApplyAddress.Add_Click({
+    $addr = $AddressInput.Text.Trim()
+    if (-not $addr) { $AddressMsg.Foreground = $RED; $AddressMsg.Text = "Please enter an address."; return }
+    Set-RealmAddress $addr
+    $AddressMsg.Foreground = $BLUE
+    $AddressMsg.Text = "Address updated: $addr"
+})
+
 # ── Saves Manager ─────────────────────────────────────────────────────────────
 
 function Refresh-Saves {
@@ -2265,6 +2327,7 @@ $win.Add_Loaded({
         $n = Get-RealmName
         $RealmInput.Text   = $n
         $DashSubtitle.Text = $n
+        $AddressInput.Text = Get-RealmAddress
         Refresh-Saves
     } catch {
         [System.Windows.Forms.MessageBox]::Show("Loaded event error:`n`n$_`n`n$($_.ScriptStackTrace)", "Launcher Error")
