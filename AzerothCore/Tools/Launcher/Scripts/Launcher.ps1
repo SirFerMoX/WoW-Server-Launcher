@@ -327,6 +327,24 @@ function Start-DBServer {
 }
 function Stop-DBServer  { Stop-Process -Name "mysqld"      -Force -ErrorAction SilentlyContinue }
 
+function Wait-DBReady {
+    if (-not $Script:dbWaitStart) { $Script:dbWaitStart = [DateTime]::Now }
+    if (([DateTime]::Now - $Script:dbWaitStart).TotalSeconds -gt 60) {
+        $Script:dbWaitStart = $null; return $true
+    }
+    if (-not (Test-Proc "mysqld")) { return $false }
+    $mysqlExe = "$mainfolder\Database\bin\mysql.exe"
+    $conf     = "$connectDir\connection_auth.cnf"
+    if (-not (Test-Path $mysqlExe) -or -not (Test-Path $conf)) {
+        $Script:dbWaitStart = $null; return $true
+    }
+    try {
+        $r = & "$mysqlExe" "--defaults-extra-file=$conf" --silent --skip-column-names -e "SELECT 1;" 2>$null
+        if ($r -and $r.Trim() -eq "1") { $Script:dbWaitStart = $null; return $true }
+    } catch { }
+    return $false
+}
+
 function Start-AuthServer {
     if (Test-Proc "authserver") { return }
     $exe = $Script:srvDirs.Auth
@@ -419,9 +437,10 @@ function Hide-Overlay {
     if ($Script:overlayWin) { $Script:overlayWin.Close(); $Script:overlayWin = $null }
 }
 
-$Script:asyncSteps = @()
-$Script:asyncIdx   = 0
-$Script:asyncTimer = $null
+$Script:asyncSteps  = @()
+$Script:asyncIdx    = 0
+$Script:asyncTimer  = $null
+$Script:dbWaitStart = $null
 
 function Invoke-Async([object[]]$Steps) {
     $Script:asyncSteps = $Steps
@@ -437,7 +456,12 @@ function Invoke-Async([object[]]$Steps) {
                 $Script:asyncTimer.Interval = [TimeSpan]::FromSeconds($step)
                 return
             } else {
-                & $step
+                $result = & $step
+                if ($result -eq $false) {
+                    $Script:asyncIdx--
+                    $Script:asyncTimer.Interval = [TimeSpan]::FromSeconds(1)
+                    return
+                }
                 $Script:asyncTimer.Interval = [TimeSpan]::FromMilliseconds(50)
             }
         }
@@ -1469,11 +1493,11 @@ $BtnLaunchAll.Add_Click({
     Show-Overlay "Starting servers..."
     $withWeb = $ChkWebsite.IsChecked
     $steps = if ($withWeb) {
-        @({ Start-DBServer }, 2, { Start-AuthServer }, 1, { Start-WorldServer }, 1,
+        @({ Start-DBServer }, { Wait-DBReady }, { Start-AuthServer }, 1, { Start-WorldServer }, 1,
           { Start-WebServer }, 3, { Start-Process "http://127.0.0.1" }, 1,
           { Start-EmbedTimer; Refresh-Status; Hide-Overlay })
     } else {
-        @({ Start-DBServer }, 2, { Start-AuthServer }, 1, { Start-WorldServer }, 1,
+        @({ Start-DBServer }, { Wait-DBReady }, { Start-AuthServer }, 1, { Start-WorldServer }, 1,
           { Start-EmbedTimer; Refresh-Status; Hide-Overlay })
     }
     Invoke-Async $steps
@@ -1517,7 +1541,7 @@ $SrvRestartAuth.Add_Click({
 
 $SrvStartWorld.Add_Click({
     Show-Overlay "Starting World server..."
-    Invoke-Async @({ Start-DBServer }, 2, { Start-AuthServer }, 1, { Start-WorldServer }, 1, { Refresh-Status; Hide-Overlay })
+    Invoke-Async @({ Start-DBServer }, { Wait-DBReady }, { Start-AuthServer }, 1, { Start-WorldServer }, 1, { Refresh-Status; Hide-Overlay })
 })
 $SrvStopWorld.Add_Click({
     Show-Overlay "Stopping World server..."
@@ -1526,7 +1550,7 @@ $SrvStopWorld.Add_Click({
 $SrvRestartWorld.Add_Click({
     Show-Overlay "Restarting World server..."
     Stop-WorldServer {
-        Invoke-Async @({ Start-DBServer }, 2, { Start-AuthServer }, 1, { Start-WorldServer }, 1, { Refresh-Status; Hide-Overlay })
+        Invoke-Async @({ Start-DBServer }, { Wait-DBReady }, { Start-AuthServer }, 1, { Start-WorldServer }, 1, { Refresh-Status; Hide-Overlay })
     }
 })
 
@@ -1545,7 +1569,7 @@ $SrvRestartWeb.Add_Click({
 
 $BulkStart.Add_Click({
     Show-Overlay "Starting all servers..."
-    Invoke-Async @({ Start-DBServer }, 2, { Start-AuthServer }, 1, { Start-WorldServer }, 1, { Start-EmbedTimer; Refresh-Status; Hide-Overlay })
+    Invoke-Async @({ Start-DBServer }, { Wait-DBReady }, { Start-AuthServer }, 1, { Start-WorldServer }, 1, { Start-EmbedTimer; Refresh-Status; Hide-Overlay })
 })
 $BulkStop.Add_Click({
     Show-Overlay "Stopping all servers..."
@@ -1555,7 +1579,7 @@ $BulkRestart.Add_Click({
     Show-Overlay "Restarting all servers..."
     Stop-WorldServer {
         Stop-AuthServer; Stop-WebServer; Stop-DBServer
-        Invoke-Async @({ Start-DBServer }, 2, { Start-AuthServer }, 1, { Start-WorldServer }, 1, { Refresh-Status; Hide-Overlay })
+        Invoke-Async @({ Start-DBServer }, { Wait-DBReady }, { Start-AuthServer }, 1, { Start-WorldServer }, 1, { Refresh-Status; Hide-Overlay })
     }
 })
 
