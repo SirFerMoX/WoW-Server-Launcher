@@ -32,6 +32,12 @@ A graphical desktop launcher for self-hosted World of Warcraft servers built on 
 
 ---
 
+## Preview
+
+<img width="1852" height="2019" alt="Launcher" src="https://github.com/user-attachments/assets/b5102fc1-15b1-407f-9872-73bff7709cdf" />
+
+---
+
 ## Requirements
 
 | Requirement | Notes |
