@@ -1619,25 +1619,59 @@ function Get-LevelName([int]$n) {
     }
 }
 
-function Get-AccountHash([string]$user, [string]$pass) {
-    $sha  = [System.Security.Cryptography.SHA1]::Create()
-    $bytes= [System.Text.Encoding]::UTF8.GetBytes("$($user.ToUpper()):$($pass.ToUpper())")
-    return ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString('X2') }) -join ''
+function Hex-ToBytes([string]$hex) {
+    $b = [byte[]]::new($hex.Length / 2)
+    for ($i = 0; $i -lt $b.Length; $i++) { $b[$i] = [Convert]::ToByte($hex.Substring($i*2,2),16) }
+    return $b
+}
+function Bytes-ToHex([byte[]]$b) { ($b | ForEach-Object { $_.ToString('X2') }) -join '' }
+function BigInt-FromBE([byte[]]$be) {
+    $le = $be.Clone(); [Array]::Reverse($le)
+    return [System.Numerics.BigInteger]::new([byte[]]($le + [byte]0))
+}
+function BigInt-ToLE([System.Numerics.BigInteger]$n, [int]$len) {
+    $raw = $n.ToByteArray()
+    $out = [byte[]]::new($len)
+    $src = if ($raw[$raw.Length-1] -eq 0) { $raw.Length-1 } else { $raw.Length }
+    [Array]::Copy($raw, $out, [Math]::Min($src,$len))
+    return $out
 }
 
-function Get-BnetHash([string]$email, [string]$pass) {
-    # SHA256(SHA256(EMAIL) + ":" + PASS) → reverse bytes → uppercase hex
-    # Matches TrinityCore BNet auth: bin2hex(strrev(hex2bin(SHA256(SHA256(EMAIL)+":"+PASS))))
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
-    $inner  = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($email.ToUpper()))
-    $innerHex = ($inner | ForEach-Object { $_.ToString('X2') }) -join ''
-    $outer  = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($innerHex + ':' + $pass.ToUpper()))
-    [Array]::Reverse($outer)
-    return ($outer | ForEach-Object { $_.ToString('X2') }) -join ''
+# GruntSRP6: WoW standard SHA1-based SRP6 for game accounts
+function Get-GameSRP6([string]$username, [string]$password) {
+    $N   = BigInt-FromBE (Hex-ToBytes "894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7")
+    $g   = [System.Numerics.BigInteger]7
+    $rng = [System.Security.Cryptography.RNGCryptoServiceProvider]::new()
+    $salt = [byte[]]::new(32); $rng.GetBytes($salt)
+    $sha  = [System.Security.Cryptography.SHA1]::Create()
+    $inner = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("$($username.ToUpper()):$($password.ToUpper())"))
+    $xRaw  = $sha.ComputeHash([byte[]]($salt + $inner))
+    $x     = [System.Numerics.BigInteger]::new([byte[]]($xRaw + [byte]0))
+    $ver   = [System.Numerics.BigInteger]::ModPow($g, $x, $N)
+    return @{ Salt = Bytes-ToHex $salt; Verifier = Bytes-ToHex (BigInt-ToLE $ver 32) }
+}
+
+# BnetSRP6v2: PBKDF2-HMAC-SHA512, 15000 iterations, 2048-bit N
+function Get-BnetSRP6([string]$email, [string]$password) {
+    $N = BigInt-FromBE (Hex-ToBytes "AC6BDB41324A9A9BF166DE5E1389582FAF72B6651987EE07FC3192943DB56050A37329CBB4A099ED8193E0757767A13DD52312AB4B03310DCD7F48A9DA04FD50E8083969EDB767B0CF6095179A163AB3661A05FBD5FAAAE82918A9962F0B93B855F97993EC975EEAA80D740ADBF4FF747359D041D5C33EA71D281E446B14773BCA97B43A23FB801676BD207A436C6481F1D2B9078717461A5B9D32E688F87748544523B524B0D57D5EA77A2775D2ECFA032CFBDBF52FB3786160279004E57AE6AF874E7303CE53299CCC041C7BC308D82A5698F3A8D0C38271AE35F8E9DBFBB694B5C803D89F7AE435DE236D525F54759B65E372FCD68EF20FA7111F9E4AFF73")
+    $g   = [System.Numerics.BigInteger]2
+    $rng = [System.Security.Cryptography.RNGCryptoServiceProvider]::new()
+    $salt = [byte[]]::new(32); $rng.GetBytes($salt)
+    $sha256   = [System.Security.Cryptography.SHA256]::Create()
+    $srpUser  = Bytes-ToHex ($sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($email.ToUpper())))
+    $tmpBytes = [System.Text.Encoding]::UTF8.GetBytes("$srpUser`:$password")
+    $pbkdf2   = [System.Security.Cryptography.Rfc2898DeriveBytes]::new($tmpBytes, $salt, 15000, [System.Security.Cryptography.HashAlgorithmName]::SHA512)
+    $xBytes   = $pbkdf2.GetBytes(64)
+    $x = BigInt-FromBE $xBytes
+    if ($xBytes[0] -band 0x80) { $x = $x - [System.Numerics.BigInteger]::Pow(2,512) }
+    $Nm1 = $N - [System.Numerics.BigInteger]::One
+    $x   = (($x % $Nm1) + $Nm1) % $Nm1
+    $ver = [System.Numerics.BigInteger]::ModPow($g, $x, $N)
+    return @{ Salt = Bytes-ToHex $salt; Verifier = Bytes-ToHex (BigInt-ToLE $ver 256) }
 }
 
 function Get-Accounts {
-    $rows = Invoke-AuthQuery "SELECT a.id, a.username, a.email, COALESCE(MAX(aa.gmlevel),0), COALESCE(a.battlenet_account,0) FROM auth.account a LEFT JOIN auth.account_access aa ON a.id=aa.id GROUP BY a.id,a.username,a.email,a.battlenet_account ORDER BY a.username;"
+    $rows = Invoke-AuthQuery "SELECT a.id, a.username, a.email, COALESCE(MAX(aa.SecurityLevel),0), COALESCE(a.battlenet_account,0) FROM auth.account a LEFT JOIN auth.account_access aa ON a.id=aa.AccountID GROUP BY a.id,a.username,a.email,a.battlenet_account ORDER BY a.username;"
     if (-not $rows) { return @() }
     $rows | ForEach-Object {
         $c = $_ -split "`t"
@@ -1703,7 +1737,8 @@ function Show-CreateAccount {
         if ($p.Length -lt 6)                              { $errMsg.Text = "Password must be at least 6 characters.";          $errMsg.Visibility = "Visible"; return }
 
         $uEsc = $u.Replace("'","''")
-        $eEsc = $e.ToUpper().Replace("'","''")
+        $eUp  = $e.ToUpper()
+        $eEsc = $eUp.Replace("'","''")
 
         $existsUser = Invoke-AuthQuery "SELECT COUNT(*) FROM auth.account WHERE username='$uEsc';"
         if ($existsUser -and [int]($existsUser.Trim()) -gt 0) { $errMsg.Text = "Username already exists."; $errMsg.Visibility = "Visible"; return }
@@ -1711,19 +1746,19 @@ function Show-CreateAccount {
         $existsEmail = Invoke-AuthQuery "SELECT COUNT(*) FROM auth.battlenet_accounts WHERE email='$eEsc';"
         if ($existsEmail -and [int]($existsEmail.Trim()) -gt 0) { $errMsg.Text = "An account with this email already exists."; $errMsg.Visibility = "Visible"; return }
 
-        # 1. Create battlenet_accounts record and get its ID
-        $bnetHash = Get-BnetHash $e $p
-        $bnetId   = Invoke-AuthQuery "INSERT INTO auth.battlenet_accounts (email,sha_pass_hash) VALUES ('$eEsc','$bnetHash'); SELECT LAST_INSERT_ID();"
+        # 1. Generate BNet SRP6 data and create battlenet_accounts record
+        try { $bnet = Get-BnetSRP6 $e $p } catch { $errMsg.Text = "SRP6 error: $_"; $errMsg.Visibility = "Visible"; return }
+        $bnetId = Invoke-AuthQuery "INSERT INTO auth.battlenet_accounts (email,srp_version,salt,verifier) VALUES ('$eEsc',2,UNHEX('$($bnet.Salt)'),UNHEX('$($bnet.Verifier)')); SELECT LAST_INSERT_ID();"
         if (-not $bnetId) { $errMsg.Text = "Failed to create BNet account record."; $errMsg.Visibility = "Visible"; return }
-        $bnetId = [int]($bnetId | Select-Object -Last 1).Trim()
+        $bnetId = [int](($bnetId | Select-Object -Last 1).Trim())
 
-        # 2. Create game account with user-provided username
-        $gameHash = Get-AccountHash $u $p
-        Invoke-AuthQuery "INSERT INTO auth.account (username,sha_pass_hash,email,reg_mail,joindate,last_ip,expansion,battlenet_account,battlenet_index) VALUES ('$uEsc','$gameHash','$eEsc','$eEsc',NOW(),'127.0.0.1',6,$bnetId,1);" | Out-Null
+        # 2. Generate game account SRP6 using the provided username
+        try { $game = Get-GameSRP6 $u $p } catch { $errMsg.Text = "SRP6 error: $_"; $errMsg.Visibility = "Visible"; return }
+        Invoke-AuthQuery "INSERT INTO auth.account (username,salt,verifier,email,reg_mail,joindate,last_ip,expansion,battlenet_account,battlenet_index) VALUES ('$uEsc',UNHEX('$($game.Salt)'),UNHEX('$($game.Verifier)'),'$eEsc','$eEsc',NOW(),'127.0.0.1',6,$bnetId,1);" | Out-Null
 
         # 3. Set GM level if needed
         if ($lvl -gt 0) {
-            Invoke-AuthQuery "INSERT INTO auth.account_access (id,gmlevel,RealmID) SELECT id,$lvl,-1 FROM auth.account WHERE username='$uEsc';" | Out-Null
+            Invoke-AuthQuery "INSERT INTO auth.account_access (AccountID,SecurityLevel,RealmID) SELECT id,$lvl,-1 FROM auth.account WHERE username='$uEsc';" | Out-Null
         }
         $d.DialogResult = $true
     })
@@ -1734,7 +1769,7 @@ function Show-ChangePassword([PSCustomObject]$acc) {
     $d = New-Dialog (@"
     <StackPanel>
       <TextBlock Text="Change Password" Foreground="#EDFFF2" FontSize="15" FontWeight="Bold" Margin="0,0,0,4"/>
-      <TextBlock Text="Account: $($acc.Username)" Foreground="#6A9E78" FontSize="11" Margin="0,0,0,18"/>
+      <TextBlock Text="Account: $($acc.Email)" Foreground="#6A9E78" FontSize="11" Margin="0,0,0,18"/>
       <TextBlock Text="New Password" Foreground="#6A9E78" FontSize="11" Margin="0,0,0,4"/>
       <Border Background="#152218" CornerRadius="6" BorderThickness="1" BorderBrush="#2E5E3E" Padding="10,7" Margin="0,0,0,10">
         <PasswordBox Name="TxtPass" Background="Transparent" Foreground="#EDFFF2" BorderThickness="0" FontSize="12"/>
@@ -1760,11 +1795,13 @@ function Show-ChangePassword([PSCustomObject]$acc) {
         $p2 = $txtPass2.Password
         if ($p.Length -lt 6) { $errMsg.Text = "Password must be at least 6 characters."; $errMsg.Visibility = "Visible"; return }
         if ($p -ne $p2)      { $errMsg.Text = "Passwords do not match.";                 $errMsg.Visibility = "Visible"; return }
-        $hash     = Get-AccountHash $acc.Username $p
-        $bnetHash = Get-BnetHash $acc.Email $p
-        $eEsc     = $acc.Email.Replace("'","''")
-        Invoke-AuthQuery "UPDATE auth.account SET sha_pass_hash='$hash',sessionkey='' WHERE id=$($acc.Id);" | Out-Null
-        Invoke-AuthQuery "UPDATE auth.battlenet_accounts SET sha_pass_hash='$bnetHash',sessionkey='' WHERE email='$eEsc';" | Out-Null
+        $eEsc = $acc.Email.ToUpper().Replace("'","''")
+        try {
+            $game = Get-GameSRP6 $acc.Username $p
+            $bnet = Get-BnetSRP6 $acc.Email $p
+        } catch { $errMsg.Text = "SRP6 error: $_"; $errMsg.Visibility = "Visible"; return }
+        Invoke-AuthQuery "UPDATE auth.account SET salt=UNHEX('$($game.Salt)'),verifier=UNHEX('$($game.Verifier)'),session_key_auth=NULL,session_key_bnet=NULL WHERE id=$($acc.Id);" | Out-Null
+        Invoke-AuthQuery "UPDATE auth.battlenet_accounts SET srp_version=2,salt=UNHEX('$($bnet.Salt)'),verifier=UNHEX('$($bnet.Verifier)'),LoginTicket=NULL WHERE email='$eEsc';" | Out-Null
         $d.DialogResult = $true
     })
     return ($d.ShowDialog() -eq $true)
@@ -1816,20 +1853,26 @@ function Show-EditAccount([PSCustomObject]$acc) {
         if ($newUser -notmatch '^[A-Za-z0-9_]{3,16}$')        { $errMsg.Text = "Username: 3-16 chars, letters/numbers/underscore."; $errMsg.Visibility = "Visible"; return }
         if ($newEmail -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') { $errMsg.Text = "Enter a valid email address.";                     $errMsg.Visibility = "Visible"; return }
 
-        if ($newUser -ne $acc.Username) {
+        if ($newUser -ne $acc.Username.ToUpper()) {
             $uEsc   = $newUser.Replace("'","''")
             $exists = Invoke-AuthQuery "SELECT COUNT(*) FROM auth.account WHERE username='$uEsc' AND id<>$($acc.Id);"
             if ($exists -and [int]($exists.Trim()) -gt 0) { $errMsg.Text = "Username already exists."; $errMsg.Visibility = "Visible"; return }
         }
 
+        if ($newEmail -ne $acc.Email.ToUpper()) {
+            $eEsc   = $newEmail.Replace("'","''")
+            $exists = Invoke-AuthQuery "SELECT COUNT(*) FROM auth.battlenet_accounts WHERE email='$eEsc' AND id<>$($acc.BnetId);"
+            if ($exists -and [int]($exists.Trim()) -gt 0) { $errMsg.Text = "Email already in use."; $errMsg.Visibility = "Visible"; return }
+        }
+
         $uEsc    = $newUser.Replace("'","''")
         $eEsc    = $newEmail.Replace("'","''")
-        $oldEEsc = $acc.Email.Replace("'","''")
+        $oldEEsc = $acc.Email.ToUpper().Replace("'","''")
         Invoke-AuthQuery "UPDATE auth.account SET username='$uEsc', email='$eEsc', reg_mail='$eEsc' WHERE id=$($acc.Id);" | Out-Null
         Invoke-AuthQuery "UPDATE auth.battlenet_accounts SET email='$eEsc' WHERE email='$oldEEsc';" | Out-Null
-        Invoke-AuthQuery "DELETE FROM auth.account_access WHERE id=$($acc.Id);" | Out-Null
+        Invoke-AuthQuery "DELETE FROM auth.account_access WHERE AccountID=$($acc.Id);" | Out-Null
         if ($newLvl -gt 0) {
-            Invoke-AuthQuery "INSERT INTO auth.account_access (id,gmlevel,RealmID) VALUES ($($acc.Id),$newLvl,-1);" | Out-Null
+            Invoke-AuthQuery "INSERT INTO auth.account_access (AccountID,SecurityLevel,RealmID) VALUES ($($acc.Id),$newLvl,-1);" | Out-Null
         }
         $d.DialogResult = $true
     })
@@ -1998,7 +2041,7 @@ $BtnAccDelete.Add_Click({
 
     # Auth account-level data
     Invoke-AuthQuery "
-        DELETE FROM auth.account_access WHERE id=$($acc.Id);
+        DELETE FROM auth.account_access WHERE AccountID=$($acc.Id);
         DELETE FROM auth.account_banned WHERE id=$($acc.Id);
         DELETE FROM auth.account_last_played_character WHERE accountId=$($acc.Id);
         DELETE FROM auth.rbac_account_permissions WHERE accountId=$($acc.Id);
