@@ -208,6 +208,19 @@ $connectDir  = "$mainfolder\Tools\Launcher\Connections"
 $customDir   = "$mainfolder\Tools\Launcher\Custom"
 $scriptsDir  = "$mainfolder\Tools\Launcher\Scripts"
 
+# Silently unblock executables and scripts to prevent SmartScreen prompts
+# when the server folder is copied from another machine
+try {
+    foreach ($dir in @("$mainfolder\Servers", "$mainfolder\Database\bin")) {
+        if (Test-Path $dir) {
+            Get-ChildItem $dir -Recurse -Include "*.exe","*.dll" -ErrorAction SilentlyContinue |
+                Unblock-File -ErrorAction SilentlyContinue
+        }
+    }
+    Get-ChildItem $mainfolder -Filter "*.bat" -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
+    Get-ChildItem $scriptsDir -Filter "*.ps1" -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
+} catch { }
+
 # ── Server management functions ───────────────────────────────────────────────
 
 function Test-Proc([string]$n) { [bool](Get-Process -Name $n -ErrorAction SilentlyContinue) }
